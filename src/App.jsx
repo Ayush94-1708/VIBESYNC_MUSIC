@@ -43,46 +43,6 @@ function App() {
   };
 
   return (
-<<<<<<< HEAD
-    <div className={`App ${theme === 'dark' ? 'dark-theme' : ''}`}>
-      {!token ? (
-        <Auth onLogin={handleLogin} />
-      ) : (
-        <div className="app-layout">
-          <header className="app-header">
-            <div className="app-logo">
-              <span className="logo-icon">🎵</span>
-              <span className="logo-text">VIBE<span className="accent">SYNC</span></span>
-            </div>
-            <div className="header-actions">
-              <button onClick={toggleTheme} className="theme-toggle-btn" title="Toggle Theme">
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-              </button>
-              <div className="user-info">
-                {user?.role === 'admin' && (
-                  <button
-                    onClick={() => setShowAdmin(!showAdmin)}
-                    className={`admin-toggle-btn ${showAdmin ? 'active' : ''}`}
-                    title="Toggle Admin Panel"
-                  >
-                    {showAdmin ? '🏠 Player' : '⚙️ Admin'}
-                  </button>
-                )}
-                <span>👤 {user?.username}</span>
-                <button onClick={handleLogout} className="logout-btn" title="Logout">
-                  <LogOut size={16} />
-                </button>
-              </div>
-            </div>
-          </header>
-          {showAdmin && user?.role === 'admin' ? (
-            <AdminPanel user={user} token={token} onBack={() => setShowAdmin(false)} />
-          ) : (
-            <MusicPlayer user={user} />
-          )}
-        </div>
-      )}
-=======
     <div className={`min-h-screen ${theme === 'dark' ? 'dark-theme' : ''}`}>
       {/* Refined Liquid Background */}
       <div className="fixed inset-0 z-[-2] bg-light-bg dark:bg-dark-bg transition-colors duration-700" />
@@ -136,6 +96,20 @@ function App() {
                 <div className="flex items-center gap-3 glass-surface px-4 py-2 rounded-full border-white/10">
                   <span className="text-sm font-semibold">@{user?.username}</span>
                   <div className="w-6 h-px bg-white/10" />
+
+                  {user?.role === 'admin' && (
+                    <>
+                      <button
+                        onClick={() => setShowAdmin(!showAdmin)}
+                        className={`admin-toggle-btn ${showAdmin ? 'text-light-primary' : 'text-light-textSecondary'} hover:text-light-primary transition-colors mr-2`}
+                        title="Toggle Admin Panel"
+                      >
+                        {showAdmin ? 'Player' : 'Admin'}
+                      </button>
+                      <div className="w-6 h-px bg-white/10" />
+                    </>
+                  )}
+
                   <button
                     onClick={handleLogout}
                     className="text-light-textSecondary dark:text-dark-textSecondary hover:text-red-500 transition-colors"
@@ -148,12 +122,15 @@ function App() {
             </header>
 
             <main>
-              <MusicPlayer user={user} />
+              {showAdmin && user?.role === 'admin' ? (
+                <AdminPanel user={user} token={token} onBack={() => setShowAdmin(false)} />
+              ) : (
+                <MusicPlayer user={user} />
+              )}
             </main>
           </motion.div>
         )}
       </AnimatePresence>
->>>>>>> 59e8064 (glass design ready and all feature are working all well)
     </div>
   );
 }

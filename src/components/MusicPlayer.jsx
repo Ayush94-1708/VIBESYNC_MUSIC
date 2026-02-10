@@ -1,21 +1,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-<<<<<<< HEAD
+import { motion, AnimatePresence } from 'framer-motion';
+import { Music, Volume2, Users, ListMusic, Sparkles, AlertCircle, Video, VideoOff, Minimize2, Maximize2 } from 'lucide-react';
 import { tracks as staticTracks } from '../data/tracks';
 import axios from 'axios';
-=======
-import { motion, AnimatePresence } from 'framer-motion';
-import { Music, Volume2, Users, ListMusic, Sparkles, AlertCircle } from 'lucide-react';
-import { tracks } from '../data/tracks';
->>>>>>> 59e8064 (glass design ready and all feature are working all well)
 import Controls from './Controls';
 import ProgressBar from './ProgressBar';
 import TrackList from './TrackList';
+import UserList from './UserList';
+import VideoGrid from './VideoGrid';
 import io from 'socket.io-client';
 import RoomManager from './RoomManager';
 import AudioVisualizer from './AudioVisualizer';
+import ErrorBoundary from './ErrorBoundary';
 
-// Connect using dynamic hostname
-const socket = io(`http://${window.location.hostname}:3001`);
+// Connect using dynamic hostname and protocol-aware logic
+const getBaseUrl = () => {
+    const hostname = window.location.hostname;
+    // Explicitly use http for the backend as index.js is an HTTP server
+    return `http://${hostname}:3001`;
+};
+
+const socket = io(getBaseUrl());
 
 const MusicPlayer = ({ user }) => {
     const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
@@ -31,6 +36,62 @@ const MusicPlayer = ({ user }) => {
     const [roomCode, setRoomCode] = useState(null);
     const [role, setRole] = useState(null); // 'host' or 'listener'
     const [users, setUsers] = useState([]); // List of users in room
+    const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+    const [isVideoMinimized, setIsVideoMinimized] = useState(false);
+    const [videoNotification, setVideoNotification] = useState(null); // { username }
+
+    // Add connection monitoring
+    useEffect(() => {
+        const onConnect = () => {
+            console.log("Socket connected:", socket.id);
+            setError(null);
+        };
+        const onConnectError = (err) => {
+            console.error("Socket connection error:", err);
+            setError("Cannot connect to server. Ensure backend is running.");
+        };
+        const onDisconnect = (reason) => {
+            console.warn("Socket disconnected:", reason);
+        };
+
+        socket.on('connect', onConnect);
+        socket.on('connect_error', onConnectError);
+        socket.on('disconnect', onDisconnect);
+
+        return () => {
+            socket.off('connect', onConnect);
+            socket.off('connect_error', onConnectError);
+            socket.off('disconnect', onDisconnect);
+        };
+    }, []);
+
+    // Refs for stable access in socket listeners (avoids stale closures)
+    const stateRef = useRef({
+        role: null,
+        currentTrackIndex: 0,
+        isPlaying: false,
+        isLooping: false,
+        roomCode: null
+    });
+
+    useEffect(() => {
+        stateRef.current = { role, currentTrackIndex, isPlaying, isLooping, roomCode };
+    }, [role, currentTrackIndex, isPlaying, isLooping, roomCode]);
+
+    // --- Video Signaling Listeners (UI Only) ---
+    useEffect(() => {
+        if (!socket) return;
+        const handleUserJoinedVideo = ({ userId: joinedUserId }) => {
+            const joinedUser = users.find(u => u.id === joinedUserId);
+            if (joinedUser && !isVideoEnabled && joinedUserId !== socket.id) {
+                setVideoNotification({ username: joinedUser.username });
+                setTimeout(() => setVideoNotification(null), 5000);
+            }
+        };
+        socket.on('user-joined-video', handleUserJoinedVideo);
+        return () => socket.off('user-joined-video', handleUserJoinedVideo);
+    }, [socket, users, isVideoEnabled]);
+
     const [isVisualizerActive, setIsVisualizerActive] = useState(true);
     const [dynamicTracks, setDynamicTracks] = useState([]);
     const [allTracks, setAllTracks] = useState(staticTracks);
@@ -40,12 +101,10 @@ const MusicPlayer = ({ user }) => {
 
     const currentTrack = allTracks[currentTrackIndex] || staticTracks[0];
 
-    // Fetch dynamic tracks from backend
     const fetchSongs = useCallback(async () => {
         try {
-            const res = await axios.get(`http://${window.location.hostname}:3001/api/songs`);
+            const res = await axios.get(`${getBaseUrl()}/api/songs`);
             setDynamicTracks(res.data);
-            // Prefix dynamic tracks so they appear first or merge with static
             setAllTracks([...res.data, ...staticTracks]);
         } catch (err) {
             console.error("Failed to fetch songs:", err);
@@ -57,17 +116,15 @@ const MusicPlayer = ({ user }) => {
     }, [fetchSongs]);
 
     const emitAction = (action, data = {}) => {
-        if (role === 'host') {
-            socket.emit('playback-action', { roomCode, action, data });
+        if (stateRef.current.role === 'host') {
+            socket.emit('sync-action', { roomCode: stateRef.current.roomCode, action, data });
         }
     };
 
     const togglePlayPause = () => {
         if (role === 'listener' && !isAutoplayBlocked) return;
-
         const newIsPlaying = !isPlaying;
         setIsPlaying(newIsPlaying);
-
         if (newIsPlaying) {
             audioRef.current.play().catch(error => {
                 console.error("Playback failed:", error);
@@ -76,7 +133,6 @@ const MusicPlayer = ({ user }) => {
         } else {
             audioRef.current.pause();
         }
-
         emitAction('playPause', { isPlaying: newIsPlaying, currentTime: audioRef.current.currentTime });
     };
 
@@ -157,35 +213,30 @@ const MusicPlayer = ({ user }) => {
             setRoomCode(roomCode);
             setRole('host');
         });
-
         socket.on('room-joined', ({ roomCode }) => {
             setRoomCode(roomCode);
             setRole('listener');
         });
-
         socket.on('room-users-update', (updatedUsers) => {
             setUsers(updatedUsers);
         });
-
         socket.on('request-sync', ({ requesterId }) => {
-            if (role === 'host') {
+            if (stateRef.current.role === 'host') {
                 const currentState = {
-                    trackIndex: currentTrackIndex,
+                    trackIndex: stateRef.current.currentTrackIndex,
                     currentTime: audioRef.current ? audioRef.current.currentTime : 0,
-                    isPlaying,
-                    isLooping
+                    isPlaying: stateRef.current.isPlaying,
+                    isLooping: stateRef.current.isLooping
                 };
                 socket.emit('send-sync', { requesterId, state: currentState });
             }
         });
-
         socket.on('sync-state', (state) => {
             if (state) {
-                const trackChanged = state.trackIndex !== currentTrackIndex;
+                const trackChanged = state.trackIndex !== stateRef.current.currentTrackIndex;
                 setCurrentTrackIndex(state.trackIndex);
                 setIsPlaying(state.isPlaying);
                 setIsLooping(state.isLooping);
-
                 if (audioRef.current) {
                     if (trackChanged) {
                         audioRef.current.dataset.pendingSeek = state.currentTime;
@@ -200,7 +251,6 @@ const MusicPlayer = ({ user }) => {
                 }
             }
         });
-
         socket.on('sync-action', ({ action, data }) => {
             if (isInternalUpdate.current) return;
             switch (action) {
@@ -229,9 +279,7 @@ const MusicPlayer = ({ user }) => {
                     console.warn("Unknown sync action:", action);
             }
         });
-
         socket.on('error', (msg) => setError(msg));
-
         return () => {
             socket.off('room-created');
             socket.off('room-joined');
@@ -241,7 +289,7 @@ const MusicPlayer = ({ user }) => {
             socket.off('sync-action');
             socket.off('error');
         };
-    }, [role, currentTrackIndex, isPlaying, isLooping]);
+    }, []); // Only register once
 
     useEffect(() => {
         if (audioRef.current) audioRef.current.volume = volume / 100;
@@ -262,8 +310,23 @@ const MusicPlayer = ({ user }) => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [role, isPlaying, currentTrackIndex, isLooping]);
 
-    const createRoom = () => socket.emit('create-room', { username: user.username });
-    const joinRoom = (code) => socket.emit('join-room', { roomCode: code, username: user.username });
+    const createRoom = () => {
+        if (!socket.connected) {
+            console.error("Socket not connected");
+            setError("Connection to server lost. Please refresh.");
+            return;
+        }
+        socket.emit('create-room', { username: user?.username || 'Anonymous' });
+    };
+
+    const joinRoom = (code) => {
+        if (!socket.connected) {
+            console.error("Socket not connected");
+            setError("Connection to server lost. Please refresh.");
+            return;
+        }
+        socket.emit('join-room', { roomCode: code, username: user?.username || 'Anonymous' });
+    };
     const toggleVisualizer = () => setIsVisualizerActive(!isVisualizerActive);
 
     const handleUnlockAutoplay = () => {
@@ -272,6 +335,15 @@ const MusicPlayer = ({ user }) => {
                 setIsAutoplayBlocked(false);
             }).catch(e => console.error("Still blocked:", e));
         }
+    };
+
+    const handleJoinVideo = () => {
+        setIsVideoEnabled(true);
+        setIsVideoMinimized(false);
+    };
+    const handleLeaveVideo = () => {
+        setIsVideoEnabled(false);
+        setIsVideoMinimized(false);
     };
 
     return (
@@ -285,6 +357,99 @@ const MusicPlayer = ({ user }) => {
                     isActive={isVisualizerActive}
                 />
             </div>
+
+            {/* Video Call Notification */}
+            <AnimatePresence>
+                {videoNotification && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                        className="fixed bottom-32 left-1/2 -translate-x-1/2 z-50 glass-surface p-4 rounded-3xl border-white/20 shadow-2xl flex items-center gap-4 min-w-[300px]"
+                    >
+                        <div className="w-10 h-10 rounded-2xl bg-green-500/20 flex items-center justify-center text-green-500">
+                            <Video size={20} />
+                        </div>
+                        <div className="flex flex-col flex-1">
+                            <span className="text-sm font-bold">{videoNotification.username} started video</span>
+                            <span className="text-[10px] opacity-60">Join the room to see them!</span>
+                        </div>
+                        <button
+                            onClick={handleJoinVideo}
+                            className="px-4 py-2 rounded-xl bg-green-500 text-white text-xs font-black uppercase tracking-wider shadow-glow-green"
+                        >
+                            Join
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Dedicated Video Call Overlay (WhatsApp Style) */}
+            <AnimatePresence>
+                {isVideoEnabled && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9, y: 100 }}
+                        animate={{
+                            opacity: 1,
+                            scale: 1,
+                            y: 0,
+                            height: isVideoMinimized ? 'auto' : '70vh',
+                            width: isVideoMinimized ? '320px' : 'calc(100% - 48px)',
+                            left: isVideoMinimized ? 'auto' : '24px',
+                            right: '24px',
+                            bottom: '120px'
+                        }}
+                        exit={{ opacity: 0, scale: 0.9, y: 100 }}
+                        className="fixed z-40 bg-black/40 backdrop-blur-3xl rounded-[40px] border border-white/20 shadow-[-20px_-20px_60px_rgba(0,0,0,0.5),20px_20px_60px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col transition-all duration-500 ease-in-out"
+                    >
+                        {/* Header */}
+                        <div className="px-8 py-4 flex items-center justify-between border-b border-white/10 bg-white/5">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-2xl bg-green-500/20 text-green-500">
+                                    <Video size={18} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h4 className="text-sm font-black uppercase tracking-widest text-white/90">Video Call</h4>
+                                    {!isVideoMinimized && (
+                                        <span className="text-[10px] font-bold text-green-500/80 uppercase tracking-tighter">
+                                            {(users || []).filter(u => u.isVideoOn).length} Participants Live
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setIsVideoMinimized(!isVideoMinimized)}
+                                    className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-white transition-colors"
+                                >
+                                    {isVideoMinimized ? <Maximize2 size={16} /> : <Minimize2 size={16} />}
+                                </button>
+                                <button
+                                    onClick={handleLeaveVideo}
+                                    className="px-4 py-2 rounded-full bg-red-500 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors shadow-glow-red"
+                                >
+                                    Leave Call
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Video Content */}
+                        {!isVideoMinimized && (
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                                <ErrorBoundary>
+                                    <VideoGrid
+                                        socket={socket}
+                                        roomCode={roomCode}
+                                        userId={socket.id}
+                                        isVideoEnabled={isVideoEnabled}
+                                        users={users || []}
+                                    />
+                                </ErrorBoundary>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
                 {/* Player Section - Compact 5 Columns */}
@@ -312,7 +477,7 @@ const MusicPlayer = ({ user }) => {
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                     onClick={handleUnlockAutoplay}
-                                    className="absolute inset-0 z-50 glass-surface flex flex-col items-center justify-center cursor-pointer bg-white/10 dark:bg-black/20 backdrop-blur-2xl"
+                                    className="absolute inset-0 z-100 glass-surface flex flex-col items-center justify-center cursor-pointer bg-white/10 dark:bg-black/20 backdrop-blur-2xl"
                                 >
                                     <div className="w-16 h-16 glass-surface flex items-center justify-center rounded-full mb-4 bg-white/20">
                                         <Volume2 size={24} />
@@ -448,15 +613,89 @@ const MusicPlayer = ({ user }) => {
                             />
                         </section>
 
-<<<<<<< HEAD
-                    <TrackList
-                        tracks={allTracks}
-                        currentIndex={currentTrackIndex}
-                        onTrackSelect={handleTrackSelect}
-                    />
-                </div>
-=======
                         <div className="h-px bg-white/5 mx-1" />
+
+                        {roomCode && (
+                            <>
+                                <section>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-light-primary" />
+                                            <h3 className="text-[10px] font-black tracking-widest uppercase opacity-40">Session</h3>
+                                        </div>
+
+                                        {/* Centralized Join Video Button */}
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={isVideoEnabled ? handleLeaveVideo : handleJoinVideo}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all
+                                                      ${isVideoEnabled
+                                                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20'
+                                                    : 'bg-green-500/20 text-green-500 hover:bg-green-500/30 border border-green-500/20'}`}
+                                        >
+                                            {isVideoEnabled ? (
+                                                <>
+                                                    <VideoOff size={12} />
+                                                    <span>Leave Video ({(users || []).filter(u => u.isVideoOn).length})</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Users size={12} />
+                                                    <span>Join Video ({(users || []).filter(u => u.isVideoOn).length})</span>
+                                                </>
+                                            )}
+                                        </motion.button>
+                                    </div>
+                                    <UserList
+                                        users={users}
+                                        currentUser={{ ...user, id: socket.id }}
+                                        onJoinVideo={handleJoinVideo}
+                                        onLeaveVideo={handleLeaveVideo}
+                                        isVideoEnabled={isVideoEnabled}
+                                    />
+                                </section>
+                                <div className="h-px bg-white/5 mx-1" />
+                            </>
+                        )}
+
+                        {/* Video Invite Toast */}
+                        <AnimatePresence>
+                            {!isVideoEnabled && (users || []).filter(u => u.isVideoOn).length > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 50, scale: 0.9 }}
+                                    className="fixed bottom-6 right-6 z-50 glass-surface glass-glow p-4 rounded-xl shadow-2xl border border-light-primary/20 max-w-sm"
+                                >
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-10 h-10 rounded-full bg-light-primary/20 flex items-center justify-center text-light-primary animate-pulse">
+                                            <Video size={20} />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-sm mb-1">Video Call Started</h4>
+                                            <p className="text-xs text-light-textSecondary dark:text-dark-textSecondary mb-3">
+                                                {(users || []).filter(u => u.isVideoOn).length} person(s) are in the video call. Would you like to join?
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={handleJoinVideo}
+                                                    className="px-3 py-1.5 rounded-lg bg-light-primary text-white text-xs font-bold hover:bg-light-primary/90 transition-colors"
+                                                >
+                                                    Join Now
+                                                </button>
+                                                <button
+                                                    onClick={() => {/* Dismiss logic could be added here if we want a manual dismiss state */ }}
+                                                    className="px-3 py-1.5 rounded-lg bg-white/5 text-xs font-bold hover:bg-white/10 transition-colors"
+                                                >
+                                                    Dismiss
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         <section className="flex-1 flex flex-col min-h-0 overflow-hidden">
                             <div className="flex items-center gap-2 mb-4 px-1">
@@ -465,7 +704,7 @@ const MusicPlayer = ({ user }) => {
                             </div>
                             <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin">
                                 <TrackList
-                                    tracks={tracks}
+                                    tracks={allTracks}
                                     currentIndex={currentTrackIndex}
                                     onTrackSelect={handleTrackSelect}
                                 />
@@ -473,7 +712,6 @@ const MusicPlayer = ({ user }) => {
                         </section>
                     </div>
                 </motion.div>
->>>>>>> 59e8064 (glass design ready and all feature are working all well)
             </div>
         </div>
     );

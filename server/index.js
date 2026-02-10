@@ -229,7 +229,7 @@ io.on('connection', (socket) => {
         const hostName = username || 'Host';
         rooms[roomCode] = {
             hostId: socket.id,
-            users: [{ id: socket.id, username: hostName, role: 'host' }],
+            users: [{ id: socket.id, username: hostName, role: 'host', isVideoOn: false }],
             currentState: { trackIndex: 0, currentTime: 0, isPlaying: false, isLooping: false }
         };
         socket.join(roomCode);
@@ -245,7 +245,7 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         if (room) {
             if (!room.users.find(u => u.id === socket.id)) {
-                room.users.push({ id: socket.id, username: username || 'Guest', role: 'listener' });
+                room.users.push({ id: socket.id, username: username || 'Guest', role: 'listener', isVideoOn: false });
             }
             socket.join(roomCode);
             socket.emit('room-joined', { roomCode, role: 'listener' });
@@ -260,12 +260,45 @@ io.on('connection', (socket) => {
         io.to(requesterId).emit('sync-state', state);
     });
 
-    socket.on('playback-action', ({ roomCode, action, data }) => {
+    // Handle Sync Actions (Play, Pause, Seek, Next, Prev)
+    socket.on('sync-action', ({ roomCode, action, data }) => {
         const room = rooms[roomCode];
-        if (room && socket.id === room.hostId) {
+        if (room) {
             room.currentState = { ...room.currentState, ...data };
             socket.to(roomCode).emit('sync-action', { action, data });
         }
+    });
+
+    // Video Call Signaling
+    socket.on('join-video', ({ roomCode }) => {
+        const room = rooms[roomCode];
+        if (room) {
+            const user = room.users.find(u => u.id === socket.id);
+            if (user) {
+                user.isVideoOn = true;
+                // Broadcast to others so they know to initiate/expect connections
+                socket.to(roomCode).emit('user-joined-video', { userId: socket.id });
+                // Update the UI list
+                io.to(roomCode).emit('room-users-update', room.users);
+            }
+        }
+    });
+
+    socket.on('leave-video', ({ roomCode }) => {
+        const room = rooms[roomCode];
+        if (room) {
+            const user = room.users.find(u => u.id === socket.id);
+            if (user) {
+                user.isVideoOn = false;
+                io.to(roomCode).emit('room-users-update', room.users);
+                socket.to(roomCode).emit('user-left-video', { userId: socket.id });
+            }
+        }
+    });
+
+    socket.on('signal', ({ to, signal }) => {
+        console.log(`Relaying signal from ${socket.id} to ${to} (type: ${signal.type || 'candidate'})`);
+        io.to(to).emit('signal', { from: socket.id, signal });
     });
 
     socket.on('disconnect', () => {
@@ -275,8 +308,11 @@ io.on('connection', (socket) => {
                 io.to(roomCode).emit('error', 'Host disconnected. Room closed.');
                 delete rooms[roomCode];
             } else {
-                const wasInRoom = room.users.some(u => u.id === socket.id);
-                if (wasInRoom) {
+                const user = room.users.find(u => u.id === socket.id);
+                if (user) {
+                    if (user.isVideoOn) {
+                        socket.to(roomCode).emit('user-left-video', { userId: socket.id });
+                    }
                     room.users = room.users.filter(u => u.id !== socket.id);
                     io.to(roomCode).emit('room-users-update', room.users);
                 }
