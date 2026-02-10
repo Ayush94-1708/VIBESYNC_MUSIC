@@ -150,7 +150,7 @@ const Auth = ({ onLogin }) => {
                             onClick={() => setIsLogin(!isLogin)}
                             className="text-[10px] font-black uppercase tracking-widest text-light-textSecondary opacity-60 hover:opacity-100 hover:text-light-primary transition-all"
                         >
-                            {isLogin ? "Join the community" : "Already a member? Sign in"}
+                            {isLogin ? "your first sign up" : "Already a member? Sign in"}
                         </button>
                     </div>
                 </motion.div>

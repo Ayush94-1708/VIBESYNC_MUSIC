@@ -10,8 +10,14 @@ const User = require('./models/User');
 const Song = require('./models/Song');
 const path = require('path');
 const fs = require('fs-extra');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('ffmpeg-static');
+const ytdl = require('@distube/ytdl-core');
+const axios = require('axios');
 
 dotenv.config();
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 app.use(cors());
@@ -123,16 +129,6 @@ app.get('/api/songs', async (req, res) => {
 });
 
 // Admin Media Ingestion Route
-const ytdl = require('@distube/ytdl-core');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('ffmpeg-static');
-const axios = require('axios');
-
-if (ffmpegInstaller.path) {
-    ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-} else {
-    ffmpeg.setFfmpegPath(ffmpegInstaller);
-}
 
 app.post('/api/admin/ingest', [auth, admin], async (req, res) => {
     try {

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Shield, Copy, Check } from 'lucide-react';
+import { Plus, Users, Shield, Copy, Check, ArrowLeft } from 'lucide-react';
 
-const RoomManager = ({ onCreateRoom, onJoinRoom, roomCode, role, users }) => {
+const RoomManager = ({ onCreateRoom, onJoinRoom, onLeaveRoom, roomCode, role, users }) => {
     const [inputCode, setInputCode] = useState('');
     const [copied, setCopied] = useState(false);
 
@@ -32,7 +32,7 @@ const RoomManager = ({ onCreateRoom, onJoinRoom, roomCode, role, users }) => {
                             className="glass-button-primary w-full py-3.5 text-sm font-bold tracking-wide flex items-center justify-center gap-2"
                         >
                             <Plus size={18} />
-                            Create Session
+                            Join with Friends
                         </motion.button>
 
                         <div className="flex items-center gap-2">
@@ -47,13 +47,13 @@ const RoomManager = ({ onCreateRoom, onJoinRoom, roomCode, role, users }) => {
                                 placeholder="Enter Access Code"
                                 value={inputCode}
                                 onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-                                className="glass-input pr-12 text-center tracking-[0.3em] font-black placeholder:tracking-normal placeholder:font-bold"
+                                className="glass-input pr-16 text-center tracking-[0.3em] font-black placeholder:tracking-normal placeholder:font-bold"
                             />
                             <button
                                 onClick={() => onJoinRoom(inputCode)}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-light-primary hover:scale-110 transition-transform"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-widest text-light-primary hover:scale-105 transition-all"
                             >
-                                <Check size={20} strokeWidth={3} />
+                                Join
                             </button>
                         </div>
                     </motion.div>
@@ -65,6 +65,15 @@ const RoomManager = ({ onCreateRoom, onJoinRoom, roomCode, role, users }) => {
                         exit={{ opacity: 0, scale: 1.02 }}
                         className="flex flex-col gap-4"
                     >
+                        {/* Back Button */}
+                        <button
+                            onClick={onLeaveRoom}
+                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity mb-2"
+                        >
+                            <ArrowLeft size={14} />
+                            <span>Leave Session</span>
+                        </button>
+
                         <div className="flex items-center justify-between p-4 glass-surface bg-white/5 border-white/5">
                             <div className="flex flex-col gap-0.5">
                                 <span className="text-[9px] font-black uppercase tracking-widest opacity-40">Access Code</span>

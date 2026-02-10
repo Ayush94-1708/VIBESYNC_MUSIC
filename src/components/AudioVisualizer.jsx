@@ -2,39 +2,49 @@ import React, { useRef, useEffect } from 'react';
 
 /**
  * AudioVisualizer component
- * Renders a high-performance, immersive background reacting to audio frequencies.
+ * Renders an energetic, bass-reactive, and moody background.
  */
 const AudioVisualizer = ({ audioRef, isPlaying, volume, isActive }) => {
     const canvasRef = useRef(null);
     const contextRef = useRef(null);
     const analyserRef = useRef(null);
-    const sourceRef = useRef(null);
     const animationFrameRef = useRef(null);
+    const lastTimeRef = useRef(performance.now());
+    const bassLevelRef = useRef(0);
 
     useEffect(() => {
-        if (!isActive || !audioRef.current) return;
+        if (!isActive) return;
 
-        // Initialize Audio Context on first interaction/play
+        // Requirement: Add crossOrigin to audio element for visualizer to work with remote URLs
+        if (audioRef.current && !audioRef.current.crossOrigin) {
+            audioRef.current.crossOrigin = "anonymous";
+        }
+
         const initAudio = () => {
-            if (contextRef.current) return;
-
+            if (contextRef.current || !audioRef.current) return;
             try {
+                // Initialize context only on user interaction (handled by isPlaying)
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 const context = new AudioContext();
                 const analyser = context.createAnalyser();
-
-                // Higher FFT size for smoother mid/high frequency details
                 analyser.fftSize = 512;
-                const source = context.createMediaElementSource(audioRef.current);
+                analyser.smoothingTimeConstant = 0.8;
 
-                source.connect(analyser);
-                analyser.connect(context.destination);
+                // TRY-CATCH: MediaElementSource can throw if already connected
+                try {
+                    const source = context.createMediaElementSource(audioRef.current);
+                    source.connect(analyser);
+                    analyser.connect(context.destination);
+                } catch (e) {
+                    console.warn("Visualizer: Audio source already connected or failed to connect.", e);
+                    // Fallback: This usually happens on hot-reload. 
+                    // We might not get data, but we can still try to recover context.
+                }
 
                 contextRef.current = context;
                 analyserRef.current = analyser;
-                sourceRef.current = source;
             } catch (err) {
-                console.error("Audio Visualizer Init Error:", err);
+                console.error("Visualizer Init Error:", err);
             }
         };
 
@@ -51,114 +61,144 @@ const AudioVisualizer = ({ audioRef, isPlaying, volume, isActive }) => {
         const dataArray = new Uint8Array(bufferLength);
 
         const render = () => {
-            if (!isActive) return;
+            const now = performance.now();
+            const deltaTime = (now - lastTimeRef.current) / 1000;
+            lastTimeRef.current = now;
 
-            animationFrameRef.current = requestAnimationFrame(render);
+            if (isActive) {
+                animationFrameRef.current = requestAnimationFrame(render);
+            }
 
             if (analyserRef.current) {
                 analyserRef.current.getByteFrequencyData(dataArray);
             }
 
-            // Canvas cleanup with slight trail effect
+            // Calculations for energetic reaction
+            const baseValue = 0.05;
+
+            let currentSubBass = 0;
+            let currentBass = 0;
+            let currentMids = 0;
+            let currentHighs = 0;
+
+            if (analyserRef.current) {
+                for (let i = 0; i < 4; i++) currentSubBass += dataArray[i];
+                currentSubBass = (currentSubBass / 4 / 255) * (volume / 100) * (isPlaying ? 1 : 0.2);
+
+                for (let i = 4; i < 20; i++) currentBass += dataArray[i];
+                currentBass = (currentBass / 16 / 255) * (volume / 100) * (isPlaying ? 1 : 0.2);
+
+                for (let i = 20; i < 100; i++) currentMids += dataArray[i];
+                currentMids = (currentMids / 80 / 255) * (volume / 100) * (isPlaying ? 1 : 0.1);
+
+                for (let i = 100; i < bufferLength; i++) currentHighs += dataArray[i];
+                currentHighs = (currentHighs / (bufferLength - 100) / 255) * (volume / 100) * (isPlaying ? 1 : 0.05);
+            }
+
+            const subBass = currentSubBass + baseValue;
+            const bass = currentBass + baseValue;
+            const mids = currentMids + baseValue;
+            const highs = currentHighs + baseValue;
+
+            // Bass pulse smoothing
+            bassLevelRef.current += (subBass - bassLevelRef.current) * (deltaTime * 10);
+            const energeticBass = bassLevelRef.current;
+
+            // Canvas cleanup
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const width = canvas.width;
-            const height = canvas.height;
+            const w = canvas.width;
+            const h = canvas.height;
+            const time = now * 0.0005;
 
-            // Calculate frequency ranges
-            // Bass: 0-10, Mids: 10-100, Highs: 100+
-            let bass = 0;
-            for (let i = 0; i < 10; i++) bass += dataArray[i];
-            bass = (bass / 10 / 255) * (volume / 100);
+            // DRAW LAYERS (From back to front)
+            // Increased opacity slightly for better visibility against dark backgrounds
 
-            let mids = 0;
-            for (let i = 10; i < 60; i++) mids += dataArray[i];
-            mids = (mids / 50 / 255) * (volume / 100);
+            // Layer 1: Background Deep Glow (Very Blurred)
+            drawWave(ctx, w, h, time * 0.5, energeticBass, mids, {
+                opacity: 0.15,
+                blur: 80,
+                color: 'hsla(260, 60%, 20%, ',
+                elevation: 0.4,
+                amplitude: 150,
+                speedMultiplier: 0.3
+            });
 
-            let highs = 0;
-            for (let i = 60; i < bufferLength; i++) highs += dataArray[i];
-            highs = (highs / (bufferLength - 60) / 255) * (volume / 100);
+            // Layer 2: Main Midnight Wave
+            drawWave(ctx, w, h, time, energeticBass, mids, {
+                opacity: 0.2,
+                blur: 40,
+                color: 'hsla(220, 70%, 15%, ',
+                elevation: 0.6,
+                amplitude: 100,
+                speedMultiplier: 0.5
+            });
 
-            // Draw Immersive Waves
-            drawWaves(ctx, width, height, bass, mids, highs);
+            // Layer 3: Indigo Accent Wave
+            drawWave(ctx, w, h, time * 1.2, energeticBass, highs, {
+                opacity: 0.15,
+                blur: 20,
+                color: 'hsla(280, 50%, 25%, ',
+                elevation: 0.75,
+                amplitude: 60,
+                speedMultiplier: 0.8
+            });
 
-            // Draw Particles
-            drawParticles(ctx, width, height, bass, highs);
+            // Layer 4: Foreground Pulse
+            drawWave(ctx, w, h, time * 1.5, energeticBass, (bass + mids) / 2, {
+                opacity: 0.18,
+                blur: 0, // Keep this sharper
+                color: 'hsla(320, 70%, 35%, ',
+                elevation: 0.85,
+                amplitude: 50,
+                speedMultiplier: 1.2
+            });
+
+            // Bass Hit Pulse Effect (Scale Canvas)
+            if (energeticBass > 0.4) {
+                const pulseScale = 1 + (energeticBass - 0.4) * 0.03;
+                canvasRef.current.style.transform = `scale(${pulseScale})`;
+            } else {
+                canvasRef.current.style.transform = 'scale(1)';
+            }
         };
 
-        const drawWaves = (ctx, w, h, bass, mids, highs) => {
-            const time = Date.now() * 0.001;
+        const lowsAndMids = (b, m) => (b + m) / 2;
 
-            // Base layer (Deep Bass Pulse)
-            const pulse = 1 + bass * 0.2;
+        const drawWave = (ctx, w, h, t, bass, audioVar, config) => {
             ctx.save();
-            ctx.translate(w / 2, h / 2);
-            ctx.scale(pulse, pulse);
-            ctx.translate(-w / 2, -h / 2);
+            if (config.blur) ctx.filter = `blur(${config.blur}px)`;
 
-            // Draw 2-3 translucent flowing waves
-            for (let i = 0; i < 3; i++) {
-                ctx.beginPath();
-                ctx.moveTo(0, h);
+            const dynamicOpacity = config.opacity + (bass * 0.2);
+            ctx.fillStyle = config.color + dynamicOpacity + ')';
 
-                const opacity = 0.1 + (i * 0.05) + (bass * 0.1);
-                const color = i === 0 ? `rgba(255, 45, 85, ${opacity})` :
-                    i === 1 ? `rgba(99, 102, 241, ${opacity})` : `rgba(236, 72, 153, ${opacity})`;
+            ctx.beginPath();
+            ctx.moveTo(0, h);
 
-                ctx.shadowBlur = 40 * bass;
-                ctx.shadowColor = color;
-                ctx.fillStyle = color;
+            for (let x = 0; x <= w; x += 15) {
+                // Wave 1: Bass-influenced large motion
+                const w1 = Math.sin(x * 0.002 + t * config.speedMultiplier) * (config.amplitude + bass * 200);
+                // Wave 2: Mid/High frequency micro-turbulence
+                const w2 = Math.sin(x * 0.008 - t * 2 * config.speedMultiplier) * (15 + audioVar * 100);
+                // Wave 3: Subtle randomness
+                const w3 = Math.cos(x * 0.004 + t * 0.5) * 20;
 
-                for (let x = 0; x <= w; x += 20) {
-                    const wave1 = Math.sin(x * 0.005 + time * (0.5 + i * 0.2)) * (50 + mids * 100);
-                    const wave2 = Math.sin(x * 0.01 - time * (0.3 + i * 0.1)) * (20 + bass * 50);
-                    const y = h * (0.7 - i * 0.1) + wave1 + wave2;
-                    ctx.lineTo(x, y);
-                }
-
-                ctx.lineTo(w, h);
-                ctx.fill();
+                const y = h * config.elevation + w1 + w2 + w3;
+                ctx.lineTo(x, y);
             }
+
+            ctx.lineTo(w, h);
+            ctx.fill();
             ctx.restore();
         };
 
-        let particles = [];
-        const drawParticles = (ctx, w, h, bass, highs) => {
-            // High frequency spawns or excites particles
-            if (particles.length < 50) {
-                particles.push({
-                    x: Math.random() * w,
-                    y: Math.random() * h,
-                    size: Math.random() * 2 + 1,
-                    speed: Math.random() * 0.5 + 0.1,
-                    opacity: Math.random() * 0.5 + 0.1
-                });
-            }
-
-            particles.forEach(p => {
-                p.y -= p.speed * (1 + highs * 5);
-                if (p.y < 0) p.y = h;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size * (1 + highs * 2), 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity + highs * 0.5})`;
-                ctx.fill();
-            });
-        };
-
-        if (isPlaying) {
-            render();
-        } else {
-            // Draw static state or clear
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+        render();
 
         return () => {
             cancelAnimationFrame(animationFrameRef.current);
         };
     }, [isPlaying, volume, isActive, audioRef]);
 
-    // Handle Resize
     useEffect(() => {
         const handleResize = () => {
             if (canvasRef.current) {
@@ -176,8 +216,8 @@ const AudioVisualizer = ({ audioRef, isPlaying, volume, isActive }) => {
     return (
         <canvas
             ref={canvasRef}
-            id="visualizer-canvas"
-            className="visualizer-bg"
+            className="fixed inset-0 z-[-1] pointer-events-none transition-transform duration-100 ease-out"
+            style={{ filter: isPlaying ? 'brightness(1)' : 'brightness(0.7)' }}
         />
     );
 };

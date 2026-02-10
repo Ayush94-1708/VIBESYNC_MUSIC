@@ -327,6 +327,14 @@ const MusicPlayer = ({ user }) => {
         }
         socket.emit('join-room', { roomCode: code, username: user?.username || 'Anonymous' });
     };
+    const leaveRoom = () => {
+        setRoomCode(null);
+        setRole(null);
+        setUsers([]);
+        setIsVideoEnabled(false);
+        // We don't necessarily need to disconnect, but resetting state is key
+    };
+
     const toggleVisualizer = () => setIsVisualizerActive(!isVisualizerActive);
 
     const handleUnlockAutoplay = () => {
@@ -349,7 +357,7 @@ const MusicPlayer = ({ user }) => {
     return (
         <div className="relative">
             {/* Global Immersive Background Visualizer */}
-            <div className="fixed inset-0 z-[-1] pointer-events-none opacity-20 transition-opacity duration-1000">
+            <div className="fixed inset-0 z-[-1] pointer-events-none opacity-100 transition-opacity duration-1000">
                 <AudioVisualizer
                     audioRef={audioRef}
                     isPlaying={isPlaying}
@@ -607,6 +615,7 @@ const MusicPlayer = ({ user }) => {
                             <RoomManager
                                 onCreateRoom={createRoom}
                                 onJoinRoom={joinRoom}
+                                onLeaveRoom={leaveRoom}
                                 roomCode={roomCode}
                                 role={role}
                                 users={users}
