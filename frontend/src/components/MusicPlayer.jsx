@@ -18,7 +18,8 @@ import ChatPanel from './ChatPanel';
 // Connect using dynamic hostname and protocol-aware logic
 // Connect using dynamic hostname and protocol-aware logic
 const getBaseUrl = () => {
-    return import.meta.env.VITE_API_URL || '';
+    const url = import.meta.env.VITE_API_URL || '';
+    return url.replace(/\/$/, ''); // Remove trailing slash if present
 };
 
 const socket = io(getBaseUrl() || '/', {
@@ -536,7 +537,7 @@ const MusicPlayer = ({ user }) => {
                         {/* Hidden Audio */}
                         <audio
                             ref={audioRef}
-                            src={currentTrack.audioUrl.startsWith('http') ? currentTrack.audioUrl : `${getBaseUrl()}${currentTrack.audioUrl}`}
+                            src={currentTrack.audioUrl.startsWith('http') ? currentTrack.audioUrl : `${getBaseUrl()}${currentTrack.audioUrl.startsWith('/') ? '' : '/'}${currentTrack.audioUrl}`}
                             onTimeUpdate={handleTimeUpdate}
                             onLoadedMetadata={handleLoadedMetadata}
                             onEnded={handleTrackEnd}
@@ -568,7 +569,7 @@ const MusicPlayer = ({ user }) => {
                                 className={`relative z-10 w-[180px] h-[180px] ${isPlaying ? 'animate-[breath_4s_ease-in-out_infinite]' : ''}`}
                             >
                                 <img
-                                    src={currentTrack.coverImage.startsWith('http') ? currentTrack.coverImage : `${getBaseUrl()}${currentTrack.coverImage}`}
+                                    src={currentTrack.coverImage.startsWith('http') ? currentTrack.coverImage : `${getBaseUrl()}${currentTrack.coverImage.startsWith('/') ? '' : '/'}${currentTrack.coverImage}`}
                                     alt={currentTrack.title}
                                     className={`w-full h-full object-cover rounded-[20px] shadow-2xl transition-all duration-1000 ${isPlaying ? 'ring-1 ring-light-primary/30 dark:ring-dark-primary/30' : ''}`}
                                 />

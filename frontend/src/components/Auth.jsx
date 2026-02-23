@@ -26,8 +26,9 @@ const Auth = ({ onLogin }) => {
         const payload = isLogin ? { email, password } : { username, email, password };
 
         try {
-            const baseUrl = import.meta.env.VITE_API_URL || '';
-            const res = await axios.post(`${baseUrl}${endpoint}`, payload);
+            const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+            const url = `${apiBaseUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+            const res = await axios.post(url, payload);
             onLogin(res.data.token, res.data.user);
         } catch (err) {
             setError(err.response?.data?.msg || 'Authentication failed');
